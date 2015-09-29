@@ -1,5 +1,6 @@
 [![Documentation Status](https://readthedocs.org/projects/firenado/badge/?version=latest)](https://readthedocs.org/projects/firenado/?badge=latest)
 # Firenado Framework
+
 Web Framework that extends Tornado Web adding new features to the original framework.
 
 ## Introduction
