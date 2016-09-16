@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright 2015 Flavio Garcia
+# Copyright 2015-2016 Flavio Garcia
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,8 +13,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
-# vim: set expandtab tabstop=4 shiftwidth=4 softtabstop=4:
 
 from __future__ import (absolute_import, division, print_function,
                         with_statement)
@@ -55,7 +53,7 @@ def configure_data_sources(data_sources, data_connected):
     elif isinstance(data_sources, list):
         for data_source in data_sources:
             configure_data_sources(data_source, data_connected)
-    #TODO Throw an error here if it is not string or list
+    # TODO Throw an error here if it is not string or list
 
 
 def configure(data_sources):
@@ -111,7 +109,7 @@ class Connector(object):
         self.__data_connected = data_connected
 
     def get_connection(self):
-        """ Returns the configured and connected database conection.
+        """ Returns the configured and connected database connection.
         """
         return None
 
@@ -175,35 +173,97 @@ class SqlalchemyConnector(Connector):
     """
 
     def __init__(self, data_connected):
+        super(SqlalchemyConnector, self).__init__(data_connected)
         self.__connection = {
-            'engine': None,
-            'session': None,
             'backend': None,
         }
-        super(SqlalchemyConnector, self).__init__(data_connected)
+        self.__engine = None
 
     def configure(self, config):
         from sqlalchemy import create_engine
-        from sqlalchemy.exc import OperationalError
-        from firenado.util.sqlalchemy_util import Session
+        from sqlalchemy import exc, event, select
+        # We will set the isolation level to READ UNCOMMITTED by default
+        # to avoid the "cache" effect sqlalchemy has without this option.
+        # Solution from: http://bit.ly/2bDq0Nv
+        # TODO: Get the isolation level from data source config
+        engine_params = {
+            'isolation_level': "READ UNCOMMITTED"
+        }
+        if 'backend' in config:
+            if config['backend'] == 'mysql':
+                # Setting connection default connection timeout for mysql
+                # backends as suggested on http://bit.ly/2bvOLxs
+                # TODO: ignore this if pool_recycle is defined on config
+                engine_params['pool_recycle'] = 3600
 
-        self.__connection['engine'] = create_engine(config['url'])
+        self.__engine = create_engine(config['url'],
+                                                    **engine_params)
+        # Adding ping connection event handler as described at the pessimistic
+        # disconnect section of: http://bit.ly/2c8Sm2t
+        @event.listens_for(self.__engine, "engine_connect")
+        def ping_connection(connection, branch):
+            logger.debug("Pinging sqlalchemy connection.")
+            if branch:
+                # "branch" refers to a sub-connection of a connection,
+                # we don't want to bother pinging on these.
+                logger.debug("The connection is a branch. There is no need to "
+                             "ping those.")
+                return
+            # turn off "close with result".  This flag is only used with
+            # "connectionless" execution, otherwise will be False in any case
+            save_should_close_with_result = connection.should_close_with_result
+            connection.should_close_with_result = False
+            try:
+                # run a SELECT 1.   use a core select() so that
+                # the SELECT of a scalar value without a table is
+                # appropriately formatted for the backend
+                logger.debug("Testing sqlalchemy connection.")
+                connection.scalar(select([1]))
+            except exc.DBAPIError as err:
+                logger.warning(err)
+                logger.warning("Firenado will try to reestablish the data "
+                               "source connection.")
+                # catch SQLAlchemy's DBAPIError, which is a wrapper
+                # for the DBAPI's exception.  It includes a
+                # .connection_invalidated attribute which specifies if this
+                # connection is a "disconnect" condition, which is based on
+                # inspection of the original exception by the dialect in use.
+                if err.connection_invalidated:
+                    # run the same SELECT again - the connection will
+                    # re-validate itself and establish a new connection.
+                    # The disconnect detection here also causes the whole
+                    # connection pool to be invalidated so that all stale
+                    # connections are discarded.
+                    connection.scalar(select([1]))
+                    logger.warning("Data source connection reestablished.")
+                else:
+                    raise
+            finally:
+                # restore "close with result"
+                connection.should_close_with_result = \
+                    save_should_close_with_result
+
         logger.info("Connecting to the database using the engine: %s.",
-                    self.__connection['engine'])
-        try:
-            self.__connection['engine'].connect()
-        except OperationalError as error:
-            logger.error("Error trying to connect to database: %s", error)
-            sys.exit(errno.ECONNREFUSED)
-
-        Session.configure(bind=self.__connection['engine'])
-        self.__connection['session'] = Session()
+                    self.__engine)
         self.__connection['backend'] = config['backend']
-        # TODO: Test the session right here. Without that the error
         # will just happen during the handler execution
 
     def get_connection(self):
         return self.__connection
+
+    def connect_engine(self):
+        from sqlalchemy.exc import OperationalError
+        try:
+            self.__engine.connect()
+        except OperationalError as op_error:
+            logger.error(
+                "Error trying to connect to database: %s", op_error)
+            sys.exit(errno.ECONNREFUSED)
+
+    def get_a_session(self):
+        from firenado.util.sqlalchemy_util import Session
+        Session.configure(bind=self.__engine)
+        return Session()
 
     @property
     def backend(self):
@@ -211,11 +271,11 @@ class SqlalchemyConnector(Connector):
 
     @property
     def engine(self):
-        return self.__connection['engine']
+        return self.__engine
 
     @property
     def session(self):
-        return self.__connection['session']
+        return self.get_a_session()
 
     def process_config(self, config):
         db_config = {
