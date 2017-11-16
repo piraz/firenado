@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright 2015-2016 Flavio Garcia
+# Copyright 2015-2017 Flavio Garcia
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,10 +21,11 @@ import os
 import six
 
 if six.PY3:
-    if six.PY34:
+    try:
         import importlib
         reload = importlib.reload
-    else:
+    except AttributeError:
+        # PY33
         import imp
         reload = imp.reload
 
