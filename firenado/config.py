@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright 2015-2016 Flavio Garcia
+# Copyright 2015-2018 Flavio Garcia
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -75,7 +75,10 @@ def load_yaml_config_file(path):
     :param path: Path where the yaml file is located.
     :return: The yaml configuration represented by the yaml file.
     """
-    return yaml.safe_load(open(path, 'r'))
+    result = None
+    with open(path, 'r') as steam:
+        result = yaml.safe_load(steam)
+    return result
 
 
 def process_config(config, config_data):
@@ -120,10 +123,10 @@ def process_app_config(config, config_data):
         if 'app' in config_data:
             process_app_config_section(config, config_data['app'])
 
-
+# TODO: This is being used for the multi app configuration
 def process_apps_config_session(config, apps_config):
-
-    print(apps_config)
+    pass
+    #print(apps_config)
 
 
 def process_app_config_section(config, app_config):
@@ -133,6 +136,8 @@ def process_app_config_section(config, app_config):
     configuration data from the config_data.
     :param app_config: App section from a config data dict.
     """
+    if 'addresses' in app_config:
+        config.app['addresses'] = app_config['addresses']
     if 'component' in app_config:
         config.app['component'] = app_config['component']
     if 'cookie_secret' in app_config:
@@ -142,6 +147,8 @@ def process_app_config_section(config, app_config):
             config.app['data']['sources'] = app_config['data']['sources']
     if 'debug' in app_config:
         config.app['debug'] = app_config['debug']
+    if 'id' in app_config:
+        config.app['id'] = app_config['id']
     if 'login' in app_config:
         if 'urls' in app_config['login']:
             for url in app_config['login']['urls']:
@@ -290,5 +297,9 @@ def process_session_config_section(config, session_config):
             generator['module'] = '.'.join(generator_ref_x[:-1][:])
             config.session['id_generators'][generator['name']] = generator
             del config.session['id_generators'][generator['name']]['name']
+    if 'name' in session_config:
+        config.session['name'] = session_config['name']
     if 'life_time' in session_config:
         config.session['life_time'] = session_config['life_time']
+    if 'scan_interval' in session_config:
+        config.session['scan_interval'] = session_config['scan_interval']

@@ -78,12 +78,14 @@ TMP_APP_PATH = TMP_SYS_PATH
 app = {}
 # Key to to be used on on the session context to store and retrieve the current
 # logged user
+app['addresses'] = ["::", "0.0.0.0"]
 app['component'] = None
 app['cookie_secret'] = None
 app['current_user_key'] = "__FIRENADO_CURRENT_USER_KEY__"
 app['data'] = {}
 app['data']['sources'] = []
 app['debug'] = False
+app['id'] = None
 app['pythonpath'] = None
 app['port'] = 8888
 app['login'] = {}
@@ -144,6 +146,9 @@ session['redis'] = {}
 session['redis']['data'] = {}
 session['redis']['data']['source'] = ''
 session['redis']['prefix'] = 'firenado:session'
+# Default session scan intervail is 2 minutes
+# This is the time application will scan for expired sessions
+session['scan_interval'] = 120
 session['type'] = ''
 
 if HAS_LIB_CONFIG_FILE:
